@@ -66,8 +66,8 @@ Something that looks more realisitic:
     });
 
 
-There is also an object orientd wrapper:
-----------------------------------------
+There is also an object oriented wrapper:
+-----------------------------------------
 
     function getBook( bookId ) {
         var def = D.Deferred.create();
