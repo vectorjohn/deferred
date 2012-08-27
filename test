@@ -1,0 +1,238 @@
+#!/usr/bin/env node
+
+var D = require( './Deferred' );
+
+testFunctionalWhen();
+testFunctionalPipe();
+testOO();
+testShellScripting();
+
+function slice(a, s, l){ return Array.prototype.slice.call( a, s, l ); }
+
+function testOO() {
+    console.log( 'test object oriented deferred' );
+
+    x = D.Deferred.create();
+
+    console.log( x );
+
+    x.then( function( r ) {
+        console.log( 'x resolved', arguments );
+    });
+
+    setTimeout( function() {
+        x.resolve( 5, 1, 2 );
+
+        x.then( function( r ) {
+            console.log( 'x still resolved', arguments );
+        });
+    }, 1000 );
+}
+
+function testFunctional() {
+    console.log( 'test functional deferred' );
+    var then = D.def( function( resolve ) {
+        setTimeout( function(){ 
+            resolve( 1,2,3,4,5 );
+            then( function( r ){ 
+                console.log( 'fnal still good', arguments );
+            });
+        }, 1200 );
+
+        setTimeout( function(){
+            then( function( r ){
+                console.log( 'fnal async late', arguments );
+            });
+        }, 1600 );
+    });
+
+    then( function( r ) {
+        console.log( 'fnal def', arguments );
+    });
+}
+
+function testFunctionalWhen() {
+    console.log( 'test functional when' );
+
+    function onearg( d ){
+        return D.pipe( d, function() {
+            return [ slice( arguments ) ];
+        });
+    }
+
+    var firstTime = D.def( function( resolve ) {
+        setTimeout( function() {
+            resolve( 'firstTime', 'args' );
+        }, 1323 );
+    });
+
+    var secondTime = D.def( function( resolve ) {
+        setTimeout( function() {
+            resolve( 'secondTime', '2args' );
+        }, 323 );
+    });
+
+    var thirdTime = D.def( function( resolve ) {
+        setTimeout( function() {
+            resolve( 'thirdTime', '3args' );
+        }, 666 );
+    });
+
+    firstTime( function() {
+        console.log( 'first resolved', slice( arguments ) );
+    });
+
+    secondTime( function() {
+        console.log( 'second resolved', slice( arguments ) );
+    });
+
+    thirdTime( function() {
+        console.log( 'third resolved', slice( arguments ) );
+    });
+
+    firstTime = onearg( firstTime );
+    secondTime = onearg( secondTime );
+    thirdTime = onearg( thirdTime );
+
+    D.when( firstTime, secondTime, thirdTime )( function() {
+        console.log( 'all things resolved', slice( arguments ) );
+    });
+
+    D.when()( function() {
+        console.log( 'when with no arguments resolved.', slice( arguments ) );
+    });
+
+    D.when( firstTime )( function() {
+        console.log( 'when with one arg resolved', slice( arguments ) );
+    });
+}
+
+function testFunctionalPipe() {
+    console.log( 'testing functional pipe' );
+
+    var verbose = D.def( function( resolve ) {
+        setTimeout( function() {
+            resolve( 'foo', 'bar', 'baz' );
+        }, 333 );
+    });
+
+    var piped = D.pipe( verbose, function() {
+        return [ slice( arguments ) ];
+    });
+
+    verbose( function() {
+        console.log( 'unpiped verbose: ', arguments );
+    });
+
+    piped( function() {
+        console.log( 'piped verbose: ', arguments );
+    });
+}
+
+function testShellScripting() {
+    var child_process = require( 'child_process' );
+    var exec = child_process.exec;
+
+    //I like chaining, which seems the obvious thing.  Just return
+    //this or something.  But instead, I could make a new kind
+    //of promise
+
+    function Chain(){ 
+        if ( ! ( this instanceof Chain ) )
+        {
+            return new Chain();
+        }
+
+        this.thenCur = D.when();
+    }
+
+    // each function seems to be very similar... need to DRY it up
+    Chain.prototype = {
+        ls: function( argStr ) {
+            argStr = argStr || '';
+            var then = this.thenCur;
+            this.thenCur = D.def( function( resolve ) {
+                then( function( results ) {
+                    exec( '/bin/ls ' + argStr, function( code, out, err ) {
+                        out = out.split( '\n' );
+                        if ( out[ out.length - 1 ] === '' ) {
+                            out.pop();
+                        }
+                        resolve( out );
+                    });
+                });
+            });
+
+            return this;
+        },
+
+        grep: function( argStr ) {
+            argStr = argStr || '';
+            var then = this.thenCur;
+            this.thenCur = D.def( function( resolve ) {
+                then( function( lines ) {
+                    var child = exec( '/bin/grep ' + argStr, function( code, out, err ) {
+                        out = out.split( '\n' );
+                        if ( out[ out.length - 1 ] === '' ) {
+                            out.pop();
+                        }
+                        resolve( out );
+                    });
+
+                    child.stdin.end( lines.join( '\n' ) );
+                });
+            });
+
+            return this;
+        },
+
+        filter: function( fn ) {
+            var then = this.thenCur;
+
+            this.thenCur = D.def( function( resolve ) {
+                then( function( lines ) {
+                    var newLines = [];
+                    for ( var i = 0; i < lines.length; i++ ) {
+                        if ( fn( lines[i] ) ) {
+                            newLines.push( lines[i] );
+                        }
+                    }
+                    resolve( newLines );
+                });
+            });
+            return this;
+        },
+
+        results: function( fn )
+        {
+            var self = this;
+            this.thenCur( function() {
+                fn.apply( self, arguments );
+            });
+            return this;
+        }
+    };
+
+    Chain()
+        .ls( '/' )
+        .results( function( r ) {
+            console.log( 'ls results', r );
+        })
+        .grep( 'e' )
+        .results( function( r ) {
+            console.log( 'grep results', arguments );
+        })
+        .filter( function( l ) {
+            return l.length === 3;
+        })
+        .results( function( r ) {
+            console.log( 'filtered results', arguments );
+        });
+
+    Chain()
+        .ls( '/home/john' )
+        .grep( '-i do' )
+        .results( console.log );
+}
+
+
