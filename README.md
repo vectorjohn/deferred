@@ -66,3 +66,26 @@ Something that looks more realisitic:
     });
 
 
+There is also an object orientd wrapper:
+----------------------------------------
+
+    function getBook( bookId ) {
+        var def = D.Deferred.create();
+
+        setTimeout( function() {
+            def.resolve( {
+                title: 'A cool book',
+                description: 'This is really a neato book.'
+            });
+        }, 1000 );
+
+        return def.promise();
+    }
+
+    
+    var then = getBook( 3 );
+
+    then( function( book ) {
+        console.log( 'got one', book );
+    });
+

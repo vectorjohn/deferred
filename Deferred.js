@@ -87,6 +87,9 @@ function pipe( then, fn ) {
  */
 var Deferred = Define( null, {
     
+    //TODO: promise should return a promise object
+    //  so people can call prmise.then() and feel like
+    //  they're doing OO programming.
     promise: function() {
         return this.then;
     }
